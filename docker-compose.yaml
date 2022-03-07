@@ -1,0 +1,47 @@
+version: "3.5"
+
+networks:
+  loki:
+    name: loki-logging
+
+volumes:
+  grafana-data:
+    name: grafana-data
+
+
+services:
+  loki:
+    image: grafana/loki:2.0.0
+    container_name: cyber-loki
+    restart: always
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./configs_loki.yaml:/etc/loki/config.yaml
+    command: -config.file=/etc/loki/config.yaml
+    networks:
+      - loki
+
+  promtail:
+    image: grafana/promtail:2.0.0
+    container_name: cyber-promtail
+    restart: always
+    volumes:
+      - ./configs_promtail.yaml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - loki
+
+  grafana:
+    image: grafana/grafana:8.3.4
+    container_name: cyber-grafana
+    restart: always
+    user: "$UID:$GID"
+    env_file:
+      - .env
+    ports:
+      - "${GF_PORT}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - loki
