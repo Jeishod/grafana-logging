@@ -5,5 +5,5 @@ datasources:
     access: proxy
     version: 1
     isDefault: true
-    url: http://cyberstudio-loki:3100
+    url: http://logging-loki:3100
     basicAuth: false

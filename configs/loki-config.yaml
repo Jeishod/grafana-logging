@@ -40,5 +40,8 @@ compactor:
 limits_config:
   retention_period: 168h
 
+ingester_client:
+  remote_timeout: "5m"
+
 ruler:
   alertmanager_url: http://127.0.0.1:9093
