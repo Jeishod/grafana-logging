@@ -1,47 +1,94 @@
-version: "3.5"
+version: "3.9"
+
+# GRAFANA_USER
+# GRAFANA_PASSWORD
+# GRAFANA_UI_EXPOSED_PORT
 
 networks:
-  loki:
-    name: loki-logging
+  logging-network:
+    name: logging-network
 
 volumes:
-  grafana-data:
-    name: grafana-data
+  logging-loki-volume:
+    name: logging-loki-volume
+  logging-grafana-volume:
+    name: logging-grafana-volume
 
+x-logging:
+  # LOGGING
+  &formatted-logging
+  driver: json-file
+  options:
+    tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+    max-size: "10m"
+    max-file: "3"
+    mode: "non-blocking"
+    max-buffer-size: "4m"
+
+x-grafana-envs:
+  # GRAFANA
+  &grafana-envs
+  GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+  GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+  GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+  GF_AUTH_ANONYMOUS_ORG_NAME: "Example Org"
+  GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+  GF_AUTH_ANONYMOUS_ENABLED: "true"
+  GF_USERS_ALLOW_SIGN_UP: "false"
+  GF_USERS_ALLOW_ORG_CREATE: "false"
 
 services:
-  loki:
-    image: grafana/loki:2.0.0
-    container_name: cyber-loki
+  logging-loki:
+    container_name: logging-loki
+    image: grafana/loki:2.8.2
     restart: always
-    ports:
-      - "3100:3100"
     volumes:
-      - ./configs_loki.yaml:/etc/loki/config.yaml
+      - logging-loki-volume:/loki
+      - ./configs/loki-config.yaml:/etc/loki/config.yaml:ro
     command: -config.file=/etc/loki/config.yaml
+    healthcheck:
+      test: wget -q --tries=1 -O- http://0.0.0.0:3100/ready | grep -q "ready"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *formatted-logging
     networks:
-      - loki
+      - logging-network
 
-  promtail:
-    image: grafana/promtail:2.0.0
-    container_name: cyber-promtail
+  logging-promtail:
+    container_name: logging-promtail
+    image: grafana/promtail:2.8.2
     restart: always
     volumes:
-      - ./configs_promtail.yaml:/etc/promtail/config.yml
-    command: -config.file=/etc/promtail/config.yml
+      - /var/lib/docker/containers:/host/containers:ro
+      - ./configs/promtail-config.yaml:/etc/promtail/config.yaml:ro
+    command: -config.file /etc/promtail/config.yaml
+    depends_on:
+      logging-loki:
+        condition: service_healthy
+    logging: *formatted-logging
     networks:
-      - loki
+      - logging-network
 
-  grafana:
-    image: grafana/grafana:8.3.4
-    container_name: cyber-grafana
+  logging-grafana:
+    container_name: logging-grafana
+    image: grafana/grafana:10.0.1
     restart: always
-    user: "$UID:$GID"
-    env_file:
-      - .env
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - logging-grafana-volume:/var/lib/grafana
+      - ./configs/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+    depends_on:
+      logging-loki:
+        condition: service_healthy
     ports:
-      - "${GF_PORT}:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
+      - "${GRAFANA_UI_EXPOSED_PORT:-3333}:3000"
+    environment:
+      <<: *grafana-envs
+    logging: *formatted-logging
     networks:
-      - loki
+      - logging-network

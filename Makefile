@@ -1,15 +1,7 @@
-#Makefile
+#!make
+
 up:
-	docker-compose up
+	@docker compose up -d --build
 
 down:
-	docker-compose down
-
-build:
-	docker-compose build
-
-rebuild:
-	docker-compose up -d --build
-
-logs:
-	docker-compose logs -f
+	@docker compose down
